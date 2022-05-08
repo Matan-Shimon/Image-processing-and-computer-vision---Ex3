@@ -34,8 +34,28 @@ def hierarchicalkDemo(img_path):
     :return:
     """
     print("Hierarchical LK Demo")
+    img_1 = cv2.imread(img_path)
+    img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
+    t = np.array([[1, 0, -150],
+                  [0, 1, 7],
+                  [0, 0, 1]], dtype=np.float)
+    img_2 = cv2.warpPerspective(img_1, t, img_1.shape[::-1])
 
-    pass
+    start = time.time()
+    uvs = opticalFlowPyrLK(img_1.astype(np.float), img_2.astype(
+        np.float), 7, stepSize=20, winSize=5)
+    end = time.time()
+
+    pts = np.indices(img_2.shape)
+    pts = np.where(np.not_equal(uvs[:, :], np.zeros((2))))
+    uvs = uvs[pts[0], pts[1]]
+    print("Time: {:.4f}".format(end - start))
+    print(np.median(uvs, 0))
+    print(np.mean(uvs, 0))
+    plt.imshow(img_2, cmap='gray')
+    plt.quiver(pts[1], pts[0], uvs[:, 1], uvs[:, 0], color='r')
+
+    plt.show()
 
 
 def compareLK(img_path):
@@ -145,16 +165,16 @@ def blendDemo():
 def main():
     print("ID:", myID())
 
-    img_path = 'input/boxMan.jpg'
+    img_path = 'boxMan.jpg'
     lkDemo(img_path)
-    hierarchicalkDemo(img_path)
-    compareLK(img_path)
-
-    imageWarpingDemo(img_path)
-
-    pyrGaussianDemo('input/pyr_bit.jpg')
-    pyrLaplacianDemo('input/pyr_bit.jpg')
-    blendDemo()
+    # hierarchicalkDemo(img_path)
+    # compareLK(img_path)
+    #
+    # imageWarpingDemo(img_path)
+    #
+    # pyrGaussianDemo('input/pyr_bit.jpg')
+    # pyrLaplacianDemo('input/pyr_bit.jpg')
+    # blendDemo()
 
 
 if __name__ == '__main__':
