@@ -1,3 +1,6 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
 from ex3_utils import *
 import time
 
@@ -14,10 +17,10 @@ def lkDemo(img_path):
     img_1 = cv2.resize(img_1, (0, 0), fx=.5, fy=0.5)
     t = np.array([[1, 0, -.2],
                   [0, 1, -.1],
-                  [0, 0, 1]], dtype=np.float)
+                  [0, 0, 1]], dtype=np.float32)
     img_2 = cv2.warpPerspective(img_1, t, img_1.shape[::-1])
     st = time.time()
-    pts, uv = opticalFlow(img_1.astype(np.float), img_2.astype(np.float), step_size=20, win_size=5)
+    pts, uv = opticalFlow(img_1.astype(np.float32), img_2.astype(np.float32), step_size=20, win_size=5)
     et = time.time()
 
     print("Time: {:.4f}".format(et - st))
@@ -28,46 +31,50 @@ def lkDemo(img_path):
 
 
 def hierarchicalkDemo(img_path):
-    """
-    ADD TEST
-    :param img_path: Image input
-    :return:
-    """
-    print("Hierarchical LK Demo")
-    img_1 = cv2.imread(img_path)
-    img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
-    t = np.array([[1, 0, -150],
-                  [0, 1, 7],
-                  [0, 0, 1]], dtype=np.float)
-    img_2 = cv2.warpPerspective(img_1, t, img_1.shape[::-1])
-
+    img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+    img_1 = cv2.resize(img_1, (0, 0), fx=.5, fy=0.5)
+    t = np.array([[1, 0, -.2],
+                  [0, 1, -.1],
+                  [0, 0, 1]], dtype=np.float32)
+    cv_warp = cv2.warpPerspective(img_1, t, img_1.shape[::-1])
     start = time.time()
-    uvs = opticalFlowPyrLK(img_1.astype(np.float), img_2.astype(
-        np.float), 7, stepSize=20, winSize=5)
+    uv = opticalFlowPyrLK(img_1.astype(np.float32), cv_warp.astype(np.float32), 10, stepSize=20, winSize=5)
     end = time.time()
-
-    pts = np.indices(img_2.shape)
-    pts = np.where(np.not_equal(uvs[:, :], np.zeros((2))))
-    uvs = uvs[pts[0], pts[1]]
-    print("Time: {:.4f}".format(end - start))
-    print(np.median(uvs, 0))
-    print(np.mean(uvs, 0))
-    plt.imshow(img_2, cmap='gray')
-    plt.quiver(pts[1], pts[0], uvs[:, 1], uvs[:, 0], color='r')
-
+    print("Time: {:.2f}".format(end - start))
+    points = np.where(np.not_equal(uv[:, :], np.zeros((2))))
+    uv = uv[points[0], points[1]]
+    print(np.median(uv, 0))
+    print(np.mean(uv, 0))
+    plt.imshow(cv_warp, cmap='gray')
+    plt.quiver(points[1], points[0], uv[:, 0], uv[:, 1], color='r')
     plt.show()
 
 
 def compareLK(img_path):
-    """
-    ADD TEST
-    Compare the two results from both functions.
-    :param img_path: Image input
-    :return:
-    """
-    print("Compare LK & Hierarchical LK")
-
-    pass
+    print("Compare LK")
+    img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+    img_1 = cv2.resize(img_1, (0, 0), fx=.5, fy=0.5)
+    t = np.array([[1, 0, 3],
+                  [0, 1, -3],
+                  [0, 0, 1]], dtype=np.float32)
+    cv_warp = cv2.warpPerspective(img_1, t, img_1.shape[::-1])
+    start = time.time()
+    regular_uv = opticalFlow(img_1.astype(np.float32), cv_warp.astype(np.float32), step_size=20, win_size=5)[1]
+    median_regular = np.median(regular_uv, 0)
+    end = time.time()
+    print("Time of regular lk: {:.2f}".format(start - end))
+    start = time.time()
+    pyr_uv = opticalFlowPyrLK(img_1.astype(np.float32), cv_warp.astype(np.float32), 7, stepSize=20, winSize=5)
+    end = time.time()
+    print("Time of regular lk: {:.2f}".format(start - end))
+    median_pyr = np.ma.median(np.ma.masked_where(pyr_uv == np.zeros((2)), pyr_uv), axis=(0, 1)).filled(0)
+    right_values = np.array([3, -3])
+    regular = np.power(np.median(regular_uv, 0) - right_values, 2).sum() / 2
+    pyr = np.power(median_pyr - right_values, 2).sum() / 2
+    print('regular median:', median_regular)
+    print('pyramid median:', median_pyr)
+    print('regular average mistake:', regular)
+    print('pyramid average mistake:', pyr)
 
 
 def displayOpticalFlow(img: np.ndarray, pts: np.ndarray, uvs: np.ndarray):
@@ -82,15 +89,83 @@ def displayOpticalFlow(img: np.ndarray, pts: np.ndarray, uvs: np.ndarray):
 # ---------------------------------------------------------------------------
 
 
-def imageWarpingDemo(img_path):
-    """
-    ADD TEST
-    :param img_path: Image input
-    :return:
-    """
-    print("Image Warping Demo")
+def translationlkdemo(img_path):
+    print("Image Warping demo")
+    img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+    translation = np.array([[1, 0, -30],
+                            [0, 1, 50],
+                            [0, 0, 1]], dtype=np.float32)
+    cv_warp = cv2.warpPerspective(img_1, translation, img_1.shape[::-1])
+    start = time.time()
+    my_translation = findTranslationLK(img_1, cv_warp)
+    end = time.time()
+    print("Time: {:.2f}".format(start - end))
+    my_warp = cv2.warpPerspective(img_1, translation, img_1.shape[::-1])
+    print("mse = ", np.square(cv_warp - my_warp).mean())
+    f, ax = plt.subplots(1, 3)
+    plt.gray()
+    ax[0].imshow(img_1)
+    ax[0].set_title('original')
+    ax[1].imshow(cv_warp)
+    ax[1].set_title('cv translation')
+    ax[2].imshow(my_warp)
+    ax[2].set_title('my translation')
+    plt.show()
 
-    pass
+
+def rigidlkdemo(img_path):
+    print("rigid lk demo")
+    img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+    # img_1 = cv2.resize(img_1, (0, 0), fx=.5, fy=0.5)
+    translation = np.array([[1, 0, -4],
+                            [0, 1, 3],
+                            [0, 0, 1]], dtype=np.float32)
+    angle = -0.5
+    rotation = np.array([[np.cos(angle), -np.sin(angle), 0],
+                         [np.sin(angle), np.cos(angle), 0],
+                         [0, 0, 1]], dtype=np.float32)
+
+    rigid = translation @ rotation
+    cv_warp = cv2.warpPerspective(img_1, rigid, img_1.shape[::-1])
+    f, ax = plt.subplots(1, 2)
+    ax[0].set_title('img2 original rigid')
+    ax[0].imshow(cv_warp, cmap='gray')
+    start = time.time()
+    my_rigid = findRigidLK(img_1, cv_warp)
+    end = time.time()
+    print("Time: {:.2f}".format(start - end))
+    print("difference in rigid")
+    print((rigid - my_rigid).sum())
+    my_warp = cv2.warpPerspective(img_1, my_rigid, img_1.shape[::-1])
+    print("mse= ", np.square(my_warp, cv_warp).mean())
+    ax[1].set_title('img2 my rigid')
+    ax[1].imshow(my_warp, cmap='gray')
+    plt.show()
+
+
+def imageWarpingDemo(img_path):
+    print("Image Warping demo")
+    img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+    # tran_img = cv2.cvtColor(cv2.imread('input/TransHome.jpg'), cv2.COLOR_BGR2GRAY)
+    img_1 = cv2.resize(img_1, (0, 0), fx=.5, fy=0.5)
+    t = np.array([[1, 0, -5],
+                  [0, 1, 4],
+                  [0, 0, 1]], dtype=np.float32)
+    cv_warp = cv2.warpPerspective(img_1, t, img_1.shape[::-1])
+    start = time.time()
+    my_warp = warpImages(img_1, cv_warp, t)
+    end = time.time()
+    print("Time: {:.2f}".format(start - end))
+    print("mse: ", np.square(cv_warp-my_warp).mean())
+    f, ax = plt.subplots(1, 3)
+    plt.gray()
+    ax[0].imshow(img_1)
+    ax[0].set_title('original')
+    ax[1].imshow(cv_warp)
+    ax[1].set_title('cv warping')
+    ax[2].imshow(my_warp)
+    ax[2].set_title('my back warping')
+    plt.show()
 
 
 # ---------------------------------------------------------------------------
@@ -164,17 +239,17 @@ def blendDemo():
 
 def main():
     print("ID:", myID())
-
-    img_path = 'boxMan.jpg'
+    img_path = 'input/boxMan.jpg'
     lkDemo(img_path)
-    # hierarchicalkDemo(img_path)
-    # compareLK(img_path)
-    #
-    # imageWarpingDemo(img_path)
-    #
-    # pyrGaussianDemo('input/pyr_bit.jpg')
-    # pyrLaplacianDemo('input/pyr_bit.jpg')
-    # blendDemo()
+    hierarchicalkDemo(img_path)
+    compareLK(img_path)
+    translationlkdemo(img_path)
+    rigidlkdemo(img_path)
+    imageWarpingDemo(img_path)
+    img_path = 'input/pyr_bit.jpg'
+    pyrGaussianDemo(img_path)
+    pyrLaplacianDemo(img_path)
+    blendDemo()
 
 
 if __name__ == '__main__':

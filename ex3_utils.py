@@ -1,3 +1,4 @@
+import math
 import sys
 from typing import List
 from numpy import linalg as LA
@@ -29,64 +30,50 @@ def opticalFlow(im1: np.ndarray, im2: np.ndarray, step_size=10,
     :param win_size: The optical flow window size (odd number)
     :return: Original points [[x,y]...], [[dU,dV]...] for each points
     """
-    Ix = cv2.Sobel(im2, cv2.CV_64F, 1, 0, ksize=3,
-                   borderType=cv2.BORDER_DEFAULT)
-    Iy = cv2.Sobel(im2, cv2.CV_64F, 0, 1, ksize=3,
-                   borderType=cv2.BORDER_DEFAULT)
+    if im1.ndim > 2:
+        im1 = cv2.cvtColor(im1, cv2.COLOR_RGB2GRAY)
+    if im2.ndim > 2:
+        im2 = cv2.cvtColor(im2, cv2.COLOR_RGB2GRAY)
 
     if im1.shape != im2.shape:
-        return "images shape must be equal"
-    if win_size % 2 != 1:
-        return "win_size must be an odd number!"
-    # if the images is an RGB type
-    if im1.ndim > 2:
-        im1 = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
-    if im2.ndim > 2:
-        im2 = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
+        return "The images must be in the same size"
 
-    assert (win_size % 2 == 1)
-    assert (im1.shape == im2.shape)
+    if win_size % 2 == 0:
+        return "win_size must be an odd number"
 
-    Gx = np.array([[0, 0, 0], [-1, 0, 1], [0, 0, 0]])
-    Gy = Gx.transpose()
-    w = win_size // 2
-    Ix = cv2.filter2D(im2, -1, Gx, borderType=cv2.BORDER_REPLICATE)
-    Iy = cv2.filter2D(im2, -1, Gy, borderType=cv2.BORDER_REPLICATE)
-    It = im2 - im1
-
+    origin_index = []
     u_v = []
-    j_i = []
-    k = 0
-    for i in range(step_size, im1.shape[0], step_size):
-        for j in range(step_size, im1.shape[1], step_size):
+    filter = np.array([[1, 0, -1]])
+    Ix = cv2.filter2D(im1, -1, filter, borderType=cv2.BORDER_REPLICATE)
+    Iy = cv2.filter2D(im1, -1, filter.transpose(), borderType=cv2.BORDER_REPLICATE)
+    It = im2 - im1
+    mid = np.round(win_size / 2).astype(int)
+    for x in range(mid, im1.shape[0] - mid, step_size):
+        for y in range(mid, im1.shape[1] - mid, step_size):
+            sx, ex = x - mid, x + mid + 1
+            sy, ey = y - mid, y + mid + 1
 
-            Nx = Ix[i - w:i + w + 1, j - w:j + w + 1].flatten()
-            Ny = Iy[i - w:i + w + 1, j - w:j + w + 1].flatten()
-            Nt = It[i - w:i + w + 1, j - w:j + w + 1].flatten()
+            A = np.zeros((pow(win_size, 2), 2))
+            b = np.zeros((pow(win_size, 2), 1))
 
-            A = np.array([[sum(Nx[k] ** 2 for k in range(len(Nx))), sum(Nx[k] * Ny[k] for k in range(len(Nx)))],
-                          [sum(Nx[k] * Ny[k] for k in range(len(Nx))), sum(Ny[k] ** 2 for k in range(len(Ny)))]])
+            A[:, 0] = Ix[sx: ex, sy: ey].flatten()
+            A[:, 1] = Iy[sx: ex, sy: ey].flatten()
+            b[:, 0] = -It[sx: ex, sy: ey].flatten()
 
-            b = np.array([[-1 * sum(Nx[k] * Nt[k] for k in range(len(Nx))),
-                           -1 * sum(Ny[k] * Nt[k] for k in range(len(Ny)))]]).reshape(2, 1)
+            b = A.transpose() @ b
+            A = A.transpose() @ A
+            eigen_values, v = np.linalg.eig(A)
 
-            ev1, ev2 = np.linalg.eigvals(A)
-            if ev2 < ev1:  # sort them
-                temp = ev1
-                ev1 = ev2
-                ev2 = temp
-            if ev2 >= ev1 > 1 and ev2 / ev1 < 100:  # check the conditions
-                velo = np.dot(np.linalg.pinv(A), b)
-                u = velo[0][0]
-                v = velo[1][0]
-                u_v.append(np.array([u, v]))
-            else:
-                k += 1
-                # print('ev1: {0} ev2: {1}', ev1, ev2, k)
-                u_v.append(np.array([0.0, 0.0]))
+            eigen_values.sort()
+            big = eigen_values[1]
+            small = eigen_values[0]
 
-            j_i.append(np.array([j, i]))
-    return np.array(j_i), np.array(u_v)
+            if big >= small > 1 and big / small < 100:
+                ans = np.dot(np.linalg.pinv(A), b)
+                origin_index.append([y, x])
+                u_v.append(ans)
+
+    return np.array(origin_index).reshape(len(origin_index), 2), -np.array(u_v).reshape(len(u_v), 2)
 
 
 def opticalFlowPyrLK(img1: np.ndarray, img2: np.ndarray, k: int,
@@ -100,33 +87,38 @@ def opticalFlowPyrLK(img1: np.ndarray, img2: np.ndarray, k: int,
     :return: A 3d array, with a shape of (m, n, 2),
     where the first channel holds U, and the second V.
     """
-    # p = []
-    # print(img1.shape)
-    # uvs = np.zeros((img2.shape, 2))
-    # print(uvs.shape)
-    # for i in range(k):
-    #     p.append(np.array([img1.copy(), img2.copy()]))
-    #     img1 = cv2.pyrDown(img1, dstsize=(img1.shape[1] // 2, img1.shape[0] // 2))
-    #     img2 = cv2.pyrDown(img2, dstsize=(img2.shape[1] // 2, img2.shape[0] // 2))
-    # for level in range(k - 1, -1, -1):
-    #     pyr1, pyr2 = p[level]
-    #     pts, uv = opticalFlow(pyr1, pyr2, max(
-    #         int(stepSize * pow(2, -level)), 1), winSize)
-    #     converted_points = pts * np.power(2, level)
-    #     try:
-    #         uvs[converted_points[:, 1], converted_points[:, 0]] += 2 * uv
-    #     except:
-    #         pass
-    # return uvs
-    gp1 = gaussianPyr(img1, k)
-    gp2 = gaussianPyr(img2, k)
-    points, directions = opticalFlow(gp1[0], gp2[0], stepSize, winSize)
-    U_V = directions
-    for i in range(1, k+1):
+    if img1.ndim > 2:
+        img1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
+    if img2.ndim > 2:
+        img2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
+
+    if img1.shape != img2.shape:
+        return "The images must be in the same size"
+
+    ans = np.zeros((img1.shape[0], img1.shape[1], 2))
+    gp1 = [img1]
+    gp2 = [img2]
+    for i in range(k-1):
+        gp1.append(cv2.pyrDown(gp1[-1]))
+        gp2.append(cv2.pyrDown(gp2[-1]))
+    gp1.reverse()
+    gp2.reverse()
+
+    for i in range(k):
         points, directions = opticalFlow(gp1[i], gp2[i], stepSize, winSize)
-        directions_i = directions + 2 * U_V
-        U_V = directions_i
-    return np.darray(U_V)
+        for j in range(len(points)):
+            y, x = points[j][0], points[j][1]
+            u, v = directions[j][0], directions[j][1]
+            if i != k-1:
+                ans[x * 2][y * 2][0] = u + 2 * ans[x][y][0]
+                ans[x * 2][y * 2][1] = v + 2 * ans[x][y][1]
+            else:
+                ans[x][y][0] *= 2
+                ans[x][y][0] += u
+                ans[x][y][1] *= 2
+                ans[x][y][1] += v
+
+    return ans
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +132,32 @@ def findTranslationLK(im1: np.ndarray, im2: np.ndarray) -> np.ndarray:
     :param im2: image 1 after Translation.
     :return: Translation matrix by LK.
     """
-    pass
+    EPS = 0.000001
+    min_error = np.inf
+    final_ans = np.array([[1, 0, 0],
+                          [0, 1, 0],
+                          [0, 0, 1]], dtype=np.float32)
+    feature_params = dict(maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7)
+    good_features = cv2.goodFeaturesToTrack(im1, mask=None, **feature_params)
+    im1 = im1.astype('uint8')
+    im2 = im2.astype('uint8')
+    cv_lk_pyr = cv2.calcOpticalFlowPyrLK(im1, im2, good_features, None)[0]
+    directions = cv_lk_pyr - good_features
+    for index in range(len(directions)):
+        u = directions[index, 0, 0]
+        v = directions[index, 0, 1]
+        check = final_ans
+        check[0][2] = u
+        check[1][2] = v
+        moved_img = cv2.warpPerspective(im1, check, im1.shape[::-1])
+        mse = np.square(im2 - moved_img).mean()
+        if mse < min_error:
+            min_error = mse
+            final_ans = check
+        if mse < EPS:
+            break
+
+    return final_ans
 
 
 def findRigidLK(im1: np.ndarray, im2: np.ndarray) -> np.ndarray:
@@ -149,7 +166,32 @@ def findRigidLK(im1: np.ndarray, im2: np.ndarray) -> np.ndarray:
     :param im2: image 1 after Rigid.
     :return: Rigid matrix by LK.
     """
-    pass
+    EPS = 0.000001
+    min_error = np.inf
+    final_rotation = np.array([[1, 0, 0],
+                               [0, 1, 0],
+                               [0, 0, 1]], dtype=np.float32)
+    directions = opticalFlow(im1, im2)[1]
+    for u, v in directions:
+        if u == 0:
+            angle = 0
+        else:
+            angle = np.arctan(v / u)
+        check = np.array([[np.cos(angle), -np.sin(angle), 0],
+                          [np.sin(angle), np.cos(angle), 0],
+                          [0, 0, 1]], dtype=np.float32)
+        rotated_img = cv2.warpPerspective(im1, check, im1.shape[::-1])
+        mse = np.square(im2 - rotated_img).mean()
+        if mse < min_error:
+            min_error = mse
+            final_rotation = check
+            final_rotated_img = rotated_img.copy()
+        if mse < EPS:
+            break
+
+    translation = findTranslationLK(final_rotated_img, im2)
+    final_ans = translation @ final_rotation
+    return final_ans
 
 
 def findTranslationCorr(im1: np.ndarray, im2: np.ndarray) -> np.ndarray:
@@ -179,21 +221,24 @@ def warpImages(im1: np.ndarray, im2: np.ndarray, T: np.ndarray) -> np.ndarray:
     :return: warp image 2 according to T and display both image1
     and the wrapped version of the image2 in the same figure.
     """
-    h1, w1 = im1.shape[:2]
-    h2, w2 = im2.shape[:2]
-    pts_img1 = np.float32([[0, 0], [0, h1], [w1, h1], [w1, 0]]).reshape(-1, 1, 2)
-    pts_img2_tmp = np.float32([[0, 0], [0, h2], [w2, h2], [w2, 0]]).reshape(-1, 1, 2)
-    pts_img2 = cv2.perspectiveTransform(pts_img2_tmp, T)
-    points = np.concatenate((pts_img1, pts_img2), axis=0)
-    [x_min, y_min] = np.int32(points.min(axis=0).ravel() - 0.5)
-    [x_max, y_max] = np.int32(points.max(axis=0).ravel() + 0.5)
-    translation_dist = [-x_min, -y_min]
-    H_translation = np.array([[1, 0, translation_dist[0]], [0, 1, translation_dist[1]], [0, 0, 1]])
+    if im1.ndim > 2:
+        im1 = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
+    if im2.ndim > 2:
+        im2 = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
 
-    new_img = cv2.warpPerspective(im2, H_translation.dot(T), (x_max - x_min, y_max - y_min))
-    new_img[translation_dist[1]:h1 + translation_dist[1], translation_dist[0]:w1 + translation_dist[0]] = im1
+    im1_height = im1.shape[0]
+    im1_width = im1.shape[1]
+    im2_height = im2.shape[0]
+    im2_width = im2.shape[1]
+    ans = np.zeros(im2.shape)
+    for i in range(1, im2_height):
+        for j in range(1, im2_width):
+            check = np.linalg.inv(T).dot(np.array([i, j, 1]))
+            found_x, found_y = int(round(check[0])), int(round(check[1]))
+            if 0 <= found_x < im1.shape[0] and 0 <= found_y < im1.shape[1]:
+                ans[i, j] = im1[found_x, found_y]
 
-    return new_img
+    return ans
 
 
 # ---------------------------------------------------------------------------
@@ -209,12 +254,10 @@ def gaussianPyr(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
     :return: Gaussian pyramid (list of images)
     """
     gauss_pyramid = [img]
-    gArr = cv2.getGaussianKernel(5, -1)
-    gKernel = gArr @ gArr.transpose()
     for i in range(1, levels):
-        It = cv2.filter2D(gauss_pyramid[i - 1], -1, gKernel)
-        It = It[::2, ::2]
-        gauss_pyramid.append(It)
+        blurred = cv2.GaussianBlur(gauss_pyramid[-1], (5, 5), 0)
+        blurred = blurred[::2, ::2]
+        gauss_pyramid.append(blurred)
 
     return gauss_pyramid
 
@@ -226,30 +269,20 @@ def laplaceianReduce(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
     :param levels: Pyramid depth
     :return: Laplacian Pyramid (list of images)
     """
-    gaker = cv2.getGaussianKernel(5, -1)
-    upsmaple_kernel = gaker @ gaker.transpose()
-    upsmaple_kernel *= 4
-    gau_pyr = gaussianPyr(img, levels)
-    gau_pyr.reverse()
-    lap_pyr = [gau_pyr[0]]
-    for i in range(1, len(gau_pyr)):
-        if len(gau_pyr[i - 1].shape) == 2:
-            out = np.zeros((2 * gau_pyr[i - 1].shape[0], 2 * gau_pyr[i - 1].shape[1]), dtype=gau_pyr[i - 1].dtype)
-        else:
-            out = np.zeros((2 * gau_pyr[i - 1].shape[0], 2 * gau_pyr[i - 1].shape[1], img.shape[2]), dtype=gau_pyr[i - 1].dtype)
-        out[::2, ::2] = gau_pyr[i - 1]
-        expanded = cv2.filter2D(out, -1, upsmaple_kernel, borderType=cv2.BORDER_REPLICATE)
-        if gau_pyr[i].shape != expanded.shape:
-            x = expanded.shape[0] - gau_pyr[i].shape[0]
-            y = expanded.shape[1] - gau_pyr[i].shape[1]
-            expanded = expanded[x::, y::]
-            diff_img = gau_pyr[i] - expanded
-        else:
-            diff_img = gau_pyr[i] - expanded
-        lap_pyr.append(diff_img)
-
-    lap_pyr.reverse()
-    return lap_pyr
+    img_pyramids = [img]
+    for i in range(levels-1):
+        img_pyramids.append(cv2.pyrDown(img_pyramids[-1]))
+    img_pyramids.reverse()
+    expanded = []
+    for i in range(levels-1):
+        expanded.append(cv2.pyrUp(img_pyramids[i], dstsize=(img_pyramids[i+1].shape[1], img_pyramids[i+1].shape[0])))
+    img_pyramids.reverse()
+    expanded.reverse()
+    laplacians = []
+    for i in range(levels-1):
+        laplacians.append(img_pyramids[i] - expanded[i])
+    laplacians.append(img_pyramids[len(img_pyramids)-1])
+    return laplacians
 
 
 def laplaceianExpand(lap_pyr: List[np.ndarray]) -> np.ndarray:
@@ -258,28 +291,13 @@ def laplaceianExpand(lap_pyr: List[np.ndarray]) -> np.ndarray:
     :param lap_pyr: Laplacian Pyramid
     :return: Original image
     """
-    gaker = cv2.getGaussianKernel(5, -1)
-    upsmaple_kernel = gaker @ gaker.transpose()
-    upsmaple_kernel *= 4
+    smallest_pyr_image = lap_pyr[-1]
     lap_pyr.reverse()
-    r_img = [lap_pyr[0]]
     for i in range(1, len(lap_pyr)):
-        if len(r_img[i - 1].shape) == 2:
-            out = np.zeros((2 * r_img[i - 1].shape[0], 2 * r_img[i - 1].shape[1]), dtype=r_img[i - 1].dtype)
-        else:
-            out = np.zeros((2 * r_img[i - 1].shape[0], 2 * r_img[i - 1].shape[1], r_img[i - 1].shape[2]), dtype=r_img[i - 1].dtype)
-        out[::2, ::2] = r_img[i - 1]
-        temp = cv2.filter2D(out, -1, upsmaple_kernel, borderType=cv2.BORDER_REPLICATE)
-        if lap_pyr[i].shape != temp.shape:
-            x = temp.shape[0] - lap_pyr[i].shape[0]
-            y = temp.shape[1] - lap_pyr[i].shape[1]
-            new_img = temp[x::, y::] + lap_pyr[i]
-        else:
-            new_img = temp + lap_pyr[i]
-        r_img.append(new_img)
+        smallest_pyr_image = cv2.pyrUp(smallest_pyr_image, dstsize=(lap_pyr[i].shape[1], lap_pyr[i].shape[0]))
+        smallest_pyr_image += lap_pyr[i]
     lap_pyr.reverse()
-    r_img.reverse()
-    return r_img[0]
+    return smallest_pyr_image
 
 
 def pyrBlend(img_1: np.ndarray, img_2: np.ndarray,
@@ -295,14 +313,16 @@ def pyrBlend(img_1: np.ndarray, img_2: np.ndarray,
     naive_blend = img_1 * mask + img_2 * (1 - mask)
     img_1_lp = laplaceianReduce(img_1, levels)
     img_2_lp = laplaceianReduce(img_2, levels)
-    mask_lp = gaussianPyr(mask, levels)
+    mask_gp = [mask]
+    for i in range(levels-1):
+        mask_gp.append(cv2.pyrDown(mask_gp[-1]))
     img_2_lp.reverse()
     img_1_lp.reverse()
-    mask_lp.reverse()
-    r_imgs = []
-    for i in range(0, len(img_2_lp)):
-        new_img = mask_lp[i] * img_1_lp[i] + (1 - mask_lp[i]) * img_2_lp[i]
-        r_imgs.append(new_img)
-    r_imgs.reverse()
-
-    return naive_blend, laplaceianExpand(r_imgs)
+    mask_gp.reverse()
+    blending = []
+    for i in range(levels):
+        new_img = img_1_lp[i] * mask_gp[i] + (1 - mask_gp[i]) * img_2_lp[i]
+        blending.append(new_img)
+    blending.reverse()
+    final_blend = laplaceianExpand(blending)
+    return naive_blend, final_blend
