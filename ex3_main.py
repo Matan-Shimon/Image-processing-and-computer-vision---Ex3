@@ -90,17 +90,19 @@ def displayOpticalFlow(img: np.ndarray, pts: np.ndarray, uvs: np.ndarray):
 
 
 def translationlkdemo(img_path):
-    print("Image Warping demo")
+    print("translation lk demo")
     img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
     translation = np.array([[1, 0, -30],
                             [0, 1, 50],
                             [0, 0, 1]], dtype=np.float32)
     cv_warp = cv2.warpPerspective(img_1, translation, img_1.shape[::-1])
+    cv2.imwrite('imTransA1.jpg', cv_warp)
     start = time.time()
     my_translation = findTranslationLK(img_1, cv_warp)
     end = time.time()
     print("Time: {:.2f}".format(start - end))
     my_warp = cv2.warpPerspective(img_1, translation, img_1.shape[::-1])
+    cv2.imwrite('imTransA2.jpg', my_warp)
     print("mse = ", np.square(cv_warp - my_warp).mean())
     f, ax = plt.subplots(1, 3)
     plt.gray()
@@ -116,7 +118,6 @@ def translationlkdemo(img_path):
 def rigidlkdemo(img_path):
     print("rigid lk demo")
     img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
-    # img_1 = cv2.resize(img_1, (0, 0), fx=.5, fy=0.5)
     translation = np.array([[1, 0, -4],
                             [0, 1, 3],
                             [0, 0, 1]], dtype=np.float32)
@@ -127,6 +128,7 @@ def rigidlkdemo(img_path):
 
     rigid = translation @ rotation
     cv_warp = cv2.warpPerspective(img_1, rigid, img_1.shape[::-1])
+    cv2.imwrite('imRigidA1.jpg', cv_warp)
     f, ax = plt.subplots(1, 2)
     ax[0].set_title('img2 original rigid')
     ax[0].imshow(cv_warp, cmap='gray')
@@ -137,6 +139,67 @@ def rigidlkdemo(img_path):
     print("difference in rigid")
     print((rigid - my_rigid).sum())
     my_warp = cv2.warpPerspective(img_1, my_rigid, img_1.shape[::-1])
+    cv2.imwrite('imRigidA2.jpg', my_warp)
+    print("mse= ", np.square(my_warp, cv_warp).mean())
+    ax[1].set_title('img2 my rigid')
+    ax[1].imshow(my_warp, cmap='gray')
+    plt.show()
+
+
+def translationCorrdemo(img_path):
+    print("translation corr demo")
+    img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+    img_1 = cv2.resize(img_1, (0, 0), fx=.5, fy=0.5)
+    translation = np.array([[1, 0, 25],
+                            [0, 1, 30],
+                            [0, 0, 1]], dtype=np.float32)
+    cv_warp = cv2.warpPerspective(img_1, translation, img_1.shape[::-1])
+    cv2.imwrite('imTransB1.jpg', cv_warp)
+    start = time.time()
+    my_translation = findTranslationCorr(img_1, cv_warp)
+    end = time.time()
+    print("Time: {:.2f}".format(start - end))
+    my_warp = cv2.warpPerspective(img_1, translation, img_1.shape[::-1])
+    cv2.imwrite('imTransB2.jpg', my_warp)
+    print("mse = ", np.square(cv_warp - my_warp).mean())
+    f, ax = plt.subplots(1, 3)
+    plt.gray()
+    ax[0].imshow(img_1)
+    ax[0].set_title('original')
+    ax[1].imshow(cv_warp)
+    ax[1].set_title('cv translation')
+    ax[2].imshow(my_warp)
+    ax[2].set_title('my translation')
+    plt.show()
+
+
+def rigidCorrdemo(img_path):
+    print("rigid corr demo")
+    img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
+    translation = np.array([[1, 0, 20],
+                            [0, 1, 35],
+                            [0, 0, 1]], dtype=np.float32)
+    angle = 0.5
+    rotation = np.array([[np.cos(angle), -np.sin(angle), 0],
+                         [np.sin(angle), np.cos(angle), 0],
+                         [0, 0, 1]], dtype=np.float32)
+
+    rigid = translation @ rotation
+    print(rigid)
+    cv_warp = cv2.warpPerspective(img_1, rigid, img_1.shape[::-1])
+    cv2.imwrite('imRigidB1.jpg', cv_warp)
+    f, ax = plt.subplots(1, 2)
+    ax[0].set_title('img2 original rigid')
+    ax[0].imshow(cv_warp, cmap='gray')
+    start = time.time()
+    my_rigid = findRigidCorr(img_1, cv_warp)
+    print(my_rigid)
+    end = time.time()
+    print("Time: {:.2f}".format(start - end))
+    print("difference in rigid")
+    print((rigid - my_rigid).sum())
+    my_warp = cv2.warpPerspective(img_1, my_rigid, img_1.shape[::-1])
+    cv2.imwrite('imRigidB2.jpg', my_warp)
     print("mse= ", np.square(my_warp, cv_warp).mean())
     ax[1].set_title('img2 my rigid')
     ax[1].imshow(my_warp, cmap='gray')
@@ -146,10 +209,9 @@ def rigidlkdemo(img_path):
 def imageWarpingDemo(img_path):
     print("Image Warping demo")
     img_1 = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2GRAY)
-    # tran_img = cv2.cvtColor(cv2.imread('input/TransHome.jpg'), cv2.COLOR_BGR2GRAY)
     img_1 = cv2.resize(img_1, (0, 0), fx=.5, fy=0.5)
-    t = np.array([[1, 0, -5],
-                  [0, 1, 4],
+    t = np.array([[1, 0, -20],
+                  [0, 1, 35],
                   [0, 0, 1]], dtype=np.float32)
     cv_warp = cv2.warpPerspective(img_1, t, img_1.shape[::-1])
     start = time.time()
@@ -245,6 +307,8 @@ def main():
     compareLK(img_path)
     translationlkdemo(img_path)
     rigidlkdemo(img_path)
+    translationCorrdemo(img_path)
+    rigidCorrdemo(img_path)
     imageWarpingDemo(img_path)
     img_path = 'input/pyr_bit.jpg'
     pyrGaussianDemo(img_path)
